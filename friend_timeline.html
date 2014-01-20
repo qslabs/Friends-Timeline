@@ -1,0 +1,227 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Friends Timeline - Quantified Self Visualization Project</title>
+    <link rel="stylesheet" href="css/foundation.css" />
+    <script src="js/modernizr.js"></script>
+  </head>
+  <body>
+    <div class="row">
+      <div class="large-12 columns">
+        <h3>Quantified Self - Visualization Project</h3>
+        <ul class="breadcrumbs">
+        <li><a href="/visproject">Home</a></li>
+        <li class="current"><a href="#">FRIENDS TIMELINE</a></li>
+      </ul>
+      </div>
+    </div>
+    <div class="row">
+      <div class="large-9 columns">
+        <h2>Friends Timeline</h2>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="large-9 columns">
+        <div id="chart"></div>
+        <hr>
+        <h4>Who I interacted with <span id="fromdate"></span></h4>
+        <div id="chart2"></div>
+      </div>
+      <div class="large-3 columns">
+        <h4>Events</h4>
+        <hr>
+        <div id="eventlist"></div>
+      </div>
+    </div>
+
+    <style>
+      .axis path,
+      .axis line {
+        fill: none;
+        stroke: black;
+        shape-rendering: crispEdges;
+      }
+
+      .axis text {
+        font-size: 12px;
+      }
+
+      .brush .extent {
+        fill: #0442BF;
+        stroke: white;
+        stroke-opacity: 0.5;
+        fill-opacity: .2;
+        shape-rendering: crispEdges;
+      }
+      
+      .selected circle {
+        fill: #ff0000;
+        stroke: #bc0005;
+      }
+
+      #chart2 text {
+        font-size: 11px;
+      } 
+
+      .friendNode {
+        fill: steelblue;
+        stroke: #234865;
+        stroke-width: 1.2px;
+
+      }
+
+      .isawyou {
+        fill: #bc0005;
+      }
+
+      .friendHorizName {
+        font-size: 11px;
+      }
+
+      .friendVertName {
+        font-size: 12px;
+      }
+        
+    </style>
+    <script src="js/jquery.js"></script>
+    <script src="js/foundation.min.js"></script>
+    <script src="js/d3.v3.min.js"></script>
+    <script>
+      var svg0 = d3.select("#chart").append("svg:svg")
+            .attr({"width":710,"height":520});
+
+      var svg2 = d3.select("#chart2").append("svg:svg").attr({"width":710,"height":130});
+  
+      var base = 400;
+     
+      var timeScale = d3.time.scale().domain([new Date('2012-04-11'),new Date('2014-01-13')]).range([60,700]);
+
+      // ok hardcode the # of friends (24)
+      var friendsScale = d3.scale.linear().domain([0,23]).range([12,480]);
+      var friendsHorizontalScale = d3.scale.linear().domain([0,23]).range([20,690]);
+
+      var timesSeenScale = d3.scale.linear().domain([0,0]).range([0,100]);
+
+      var axis = d3.svg.axis().scale(timeScale).orient("bottom");
+      var mainChartWAxis = svg0.append("g").attr("transform","translate(0,500)")
+      mainChartWAxis.append("g")
+        .attr("transform", "translate(0,0)")
+        .attr("class", "time axis")
+      svg0.selectAll(".time.axis").call(axis);
+
+      d3.json('friends_timeline.json', function(data) {
+        var entries = svg0.selectAll(".entry").data(data.entries).enter().append("svg:g").attr("class","entry")
+          .attr("transform", function(d) { 
+              return "translate(" + timeScale(new Date(d.date))+",0)";
+          });
+
+        var circles = entries.selectAll(".friendNode").data(function(d) {  return d.friends }).enter().append("svg:circle").attr("class","friendNode")
+        .attr("r",4).attr("cy", function(d) { return friendsScale(d)-6 })
+
+        var friend_g = svg0.selectAll(".friendName").data(data.close_friends).enter().append("g")
+          .attr("transform", function(d,i) { return "translate(0," + friendsScale(i) + ")"; });
+
+        var brush = d3.svg.brush().x(timeScale).extent([new Date("2013-01-01"), new Date("2013-02-01")]).on("brushend", brushend);
+        var brushg = svg0.append("g").attr("class","brush").call(brush);
+        brushg.selectAll("rect")
+            .attr("height", 500);
+        brushend();
+        function brushend() {
+          var s = brush.extent();
+          entries.classed("selected", function(d) { return s[0] <= (new Date(d.date)) && (new Date(d.date)) <= s[1]; });
+          var formatter = d3.time.format("%b %d %y")
+          d3.select("#fromdate").text(" from " + formatter(s[0]) + " to " + formatter(s[1]));
+          filtered_data = data.entries.filter(function(d) { return s[0] <= (new Date(d.date)) && (new Date(d.date)) <= s[1]; });
+          // list out all the filtered events
+          populate(filtered_data, data.close_friends);
+        }
+
+        friend_g.append("text").attr("class","friendVertName").text(function(d) { return d }).attr("x",3);
+        friend_g.append("rect").attr("width",50).attr("height",18).style("fill", "black").attr("y",-12).attr("rx",4).attr("ry",4).style("fill-opacity",0.2)
+          .on("mouseover", function(d) {
+            d3.select(this).transition().duration(0).style("fill-opacity",0.3)
+          }).on("mouseout", function(d) {
+            d3.select(this).transition().duration(200).style("fill-opacity",0.2)
+          }).on("click", function(d,i) {
+            // filtering by a single person
+            brush.clear();
+            svg0.selectAll('.brush').call(brush);
+            entries.classed("selected", false);
+            entries.classed("selected", function(e) { return e.friends.indexOf(i) != -1 });
+
+            d3.select("#fromdate").text("when I was with " + d);
+            filtered_data = data.entries.filter(function(e) { return e.friends.indexOf(i)  != -1  });
+            // list out all the filtered events
+            populate(filtered_data, data.close_friends);
+          });
+      });
+
+
+      svg2.selectAll(".isawyou").data([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]).enter().append("rect").attr("class","isawyou")
+        .attr("width",7).attr("height",function(d) { return timesSeenScale(d)}).attr("x", function(d,i) { return friendsHorizontalScale(i) })
+        .attr("y", function(d) { return 100 - timesSeenScale(d) });
+
+      function populate(filtered_data, close_friends) {
+            var event_list = d3.select("#eventlist")
+            event_list.selectAll(".event").data([]).exit().remove();
+            var event_divs = event_list.selectAll(".event").data(filtered_data).enter().append("div").attr("class","event").style("margin-bottom","10px");
+            event_divs.append("span").text(function(d) { return d.what });
+            event_divs.append("br")
+            event_divs.append("span").style("font-size", "12px").text(function(d) {
+              var str = ""
+              for (var i in d.friends) {
+                str = str + close_friends[d.friends[i]] + " "
+              }
+              return str
+            });
+              
+
+            // of the filtered data, sum up who were the most seen
+
+            var seen_friends = {};
+            for (var i in filtered_data) {
+              for (var j in filtered_data[i].friends) {
+                if(seen_friends[filtered_data[i].friends[j]]) {
+                  seen_friends[filtered_data[i].friends[j]]++
+                } else {
+                  seen_friends[filtered_data[i].friends[j]] = 1
+                }
+              }
+            }
+
+            var output = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+            for (var t in seen_friends) {
+              output[t] = seen_friends[t];
+            }
+
+            timesSeenScale.domain(d3.extent(output));
+            //svg2.selectAll(".isawyou").data([]).exit().remove();
+            svg2.selectAll(".isawyou").data(output).transition().duration(200)
+              .attr("height",function(d) { return timesSeenScale(d)})
+              .attr("y", function(d) { return 100 - timesSeenScale(d) });
+
+            svg2.selectAll(".friendHorizName").data(close_friends).enter().append("svg:text").text(function(d) { 
+              if(d.length < 4) {
+                return d;
+              } else {
+                return d.substring(0,4) + '.'
+              }
+            }).attr("class","friendHorizName").attr("y",120)
+                  .attr("x", function(d,i) { return friendsHorizontalScale(i) -7; })
+
+      }
+    </script>
+    <!-- kk Google Analytics -->
+    <script src="http://www.google-analytics.com/urchin.js" type="text/javascript">
+    </script>
+    <script type="text/javascript">
+    _uacct = "UA-71316-1";
+    urchinTracker();
+    </script>
+    <!-- kk-->
+  </body>
+</html>
+
